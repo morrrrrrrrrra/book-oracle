@@ -5,7 +5,7 @@ Book Oracle — Flask сервер
 """
 from flask import Flask, request, jsonify, send_from_directory
 import pdfplumber
-import csv, io, os, json
+import csv, io, os, json, re
 
 app = Flask(__name__, static_folder='.')
 
@@ -65,8 +65,28 @@ def generate():
             text = f'[рядок {line_num} не знайдено на стор. {page_key}]'
         else:
             idx = line_num - 1
-            taken = page_lines[idx:idx + lines_take]
-            text = ' '.join(taken)
+            # Collect a window of lines (take more to find sentence boundaries)
+            window = page_lines[idx:idx + lines_take + 5]
+            raw = ' '.join(window)
+
+            # Find last sentence-ending punctuation within reasonable length
+            # Try to end on . ! ? — but not too short and not too long
+            min_chars = 40
+            max_chars = 400
+
+            # Find all sentence endings
+            endings = [m.end() for m in re.finditer(r'[.!?»][)\s»"\']*', raw)]
+
+            text = raw  # fallback
+            for end in endings:
+                candidate = raw[:end].strip()
+                if len(candidate) >= min_chars:
+                    text = candidate
+                    break
+
+            # If no good ending found within max_chars, cut at max and add ellipsis
+            if len(text) > max_chars:
+                text = text[:max_chars].rsplit(' ', 1)[0] + '...'
 
         results.append({
             'email': c.get('email', ''),
